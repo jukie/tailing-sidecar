@@ -6,17 +6,17 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 env:
-  SIDECAR_IMAGE: "ghcr.io/sumologic/tailing-sidecar"
-  OPERATOR_IMAGE: "ghcr.io/sumologic/tailing-sidecar-operator"
-  ECR_URL: public.ecr.aws/sumologic
-  SIDECAR_IMAGE_ECR: "public.ecr.aws/sumologic/tailing-sidecar"
-  OPERATOR_IMAGE_ECR: "public.ecr.aws/sumologic/tailing-sidecar-operator"
-  SIDECAR_IMAGE_DOCKERHUB: "sumologic/tailing-sidecar"
-  OPERATOR_IMAGE_DOCKERHUB: "sumologic/tailing-sidecar-operator"
+  SIDECAR_IMAGE: ${{ vars.OVERRIDE_SIDECAR_IMAGE || 'ghcr.io/sumologic/tailing-sidecar' }}
+  OPERATOR_IMAGE: ${{ vars.OVERRIDE_OPERATOR_IMAGE || 'ghcr.io/sumologic/tailing-sidecar-operator' }}
+  ECR_URL: ${{ vars.OVERRIDE_ECR_URL || 'public.ecr.aws/sumologic' }}
+  SIDECAR_IMAGE_ECR: ${{ vars.OVERRIDE_SIDECAR_IMAGE_ECR || 'public.ecr.aws/sumologic/tailing-sidecar-dev' }}
+  OPERATOR_IMAGE_ECR:  ${{ vars.OVERRIDE_OPERATOR_IMAGE_ECR || 'public.ecr.aws/sumologic/tailing-sidecar-operator-dev' }}
+  SIDECAR_IMAGE_DOCKERHUB: ${{ vars.OVERRIDE_SIDECAR_IMAGE_DOCKERHUB || 'sumologic/tailing-sidecar-dev' }}
+  OPERATOR_IMAGE_DOCKERHUB: ${{ vars.OVERRIDE_OPERATOR_IMAGE_DOCKERHUB || 'sumologic/tailing-sidecar-operator-dev' }}
   LATEST_TAG: "latest"
 
 jobs:
-  build-sidecar:
+  build-sidecar-ghcr:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -35,8 +35,8 @@ jobs:
         uses: docker/login-action@v3.1.0
         with:
           registry: ghcr.io
-          username: USERNAME
-          password: ${{ secrets.CR_PAT }}
+          username: $GITHUB_USER
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push tailing sidecar multiplatform image
         run: make build-push-multiplatform TAG=${{ env.SIDECAR_IMAGE }}:${{ steps.extract_tag.outputs.tag }}
         working-directory: ./sidecar/fluentbit
@@ -50,6 +50,21 @@ jobs:
         run: make build-push-ubi TAG=${{ env.SIDECAR_IMAGE }}:${{ env.LATEST_TAG }}
         working-directory: ./sidecar/fluentbit
 
+  build-sidecar-ecr:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract tag
+        id: extract_tag
+        run: echo "tag=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_OUTPUT
+      - name: Print container tag
+        run: echo "Running release build for ${{ steps.extract_tag.outputs.tag }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.3.0
       - name: Log in to AWS Public ECR to publish tailing sidecar image
         run: make login-ecr
         env:
@@ -68,6 +83,21 @@ jobs:
         run: make build-push-ubi TAG=${{ env.SIDECAR_IMAGE_ECR }}:${{ env.LATEST_TAG }}
         working-directory: ./sidecar/fluentbit
 
+  build-sidecar-dockerhub:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract tag
+        id: extract_tag
+        run: echo "tag=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_OUTPUT
+      - name: Print container tag
+        run: echo "Running release build for ${{ steps.extract_tag.outputs.tag }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.3.0
       - name: Login to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
@@ -86,7 +116,7 @@ jobs:
         run: make build-push-ubi TAG=${{ env.SIDECAR_IMAGE_DOCKERHUB }}:${{ env.LATEST_TAG }}
         working-directory: ./sidecar/fluentbit
 
-  build-operator:
+  build-operator-ghcr:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -109,8 +139,8 @@ jobs:
         uses: docker/login-action@v3.1.0
         with:
           registry: ghcr.io
-          username: USERNAME
-          password: ${{ secrets.CR_PAT }}
+          username: $GITHUB_USER
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push tailing sidecar operator multiplatform image
         run: make build-push-multiplatform IMG=${{ env.OPERATOR_IMAGE }}:${{ steps.extract_tag.outputs.tag }}
         working-directory: ./operator
@@ -124,6 +154,24 @@ jobs:
         run: make build-push-ubi IMG=${{ env.OPERATOR_IMAGE }}:${{ env.LATEST_TAG }}
         working-directory: ./operator
 
+  build-operator-ecr:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+      - name: Extract tag
+        id: extract_tag
+        run: echo "tag=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_OUTPUT
+      - name: Print container tag
+        run: echo "Running release build for ${{ steps.extract_tag.outputs.tag }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.3.0
       - name: Log in to AWS Public ECR to publish tailing sidecar operator image
         run: make login-ecr
         env:
@@ -142,6 +190,24 @@ jobs:
         run: make build-push-ubi IMG=${{ env.OPERATOR_IMAGE_ECR }}:${{ env.LATEST_TAG }}
         working-directory: ./operator
 
+  build-operator-dockerhub:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+      - name: Extract tag
+        id: extract_tag
+        run: echo "tag=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_OUTPUT
+      - name: Print container tag
+        run: echo "Running release build for ${{ steps.extract_tag.outputs.tag }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.3.0
       - name: Login to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
